@@ -1,55 +1,69 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <sched.h>
+#include <sys/utsname.h>
+#include <syslog.h>
+#include <errno.h>
+#include <string.h>
 
-#define NUM_THREADS 12
+#define RTES_SYSLOG(priority, COURSE_NUM, ASSGNMT_NUM, log_fmt, ...)  \
+    syslog(priority, "[COURSE:%d][ASSIGNMENT:%d] "log_fmt, COURSE_NUM, ASSGNMT_NUM, ##__VA_ARGS__)
 
-typedef struct
+#define COURSE_NUM      (1)
+#define ASSGNMT_NUM     (1)
+
+
+void *helloWorldThread(void *threadp)
 {
-    int threadIdx;
-} threadParams_t;
-
-
-// POSIX thread declarations and scheduling attributes
-//
-pthread_t threads[NUM_THREADS];
-threadParams_t threadParams[NUM_THREADS];
-
-
-void *counterThread(void *threadp)
-{
-    int sum=0, i;
-    threadParams_t *threadParams = (threadParams_t *)threadp;
-
-    for(i=1; i < (threadParams->threadIdx)+1; i++)
-        sum=sum+i;
- 
-    printf("Thread idx=%d, sum[0...%d]=%d\n", 
-           threadParams->threadIdx,
-           threadParams->threadIdx, sum);
+    RTES_SYSLOG(LOG_INFO, COURSE_NUM, ASSGNMT_NUM, "Hello World from Thread! ");
+    return threadp;
 }
 
 
 int main (int argc, char *argv[])
 {
-   int rc;
-   int i;
+    // struct utsname kernel_info = { 0 };
+    // int rc = 0;
+    pthread_t thread_id;
+    openlog(NULL, 0, LOG_USER);
+    
+    /* rc = uname(&kernel_info);
+    if (rc != 0)
+    {
+        RTES_SYSLOG(LOG_ERR, COURSE_NUM, ASSGNMT_NUM, "Failed to read kernel info: %s", strerror(errno));
+    }
+    else
+    {
+        RTES_SYSLOG(LOG_INFO, COURSE_NUM, ASSGNMT_NUM, "")
+    } */
 
-   for(i=0; i < NUM_THREADS; i++)
-   {
-       threadParams[i].threadIdx=i;
+    FILE *pipe = popen("uname -a", "r");
 
-       pthread_create(&threads[i],   // pointer to thread descriptor
-                      (void *)0,     // use default attributes
-                      counterThread, // thread function entry point
-                      (void *)&(threadParams[i]) // parameters to pass in
-                     );
+    if (pipe == NULL)
+    {
+        RTES_SYSLOG(LOG_ERR, COURSE_NUM, ASSGNMT_NUM, "Failed to open a pipe: %s", strerror(errno));
+    }
+    else
+    {
+        char kernel_info[256] = { 0 };
+        if (fgets(kernel_info, sizeof(kernel_info), pipe) != NULL)
+        {
+            RTES_SYSLOG(LOG_INFO, COURSE_NUM, ASSGNMT_NUM, "%s", kernel_info);
+        }
+        else
+        {
+            RTES_SYSLOG(LOG_ERR, COURSE_NUM, ASSGNMT_NUM, "Failed in reading kernel info from pipe: %s", strerror(errno));
+        }
+    }
 
-   }
+    RTES_SYSLOG(LOG_INFO, COURSE_NUM, ASSGNMT_NUM, "Hello World from Main! ");
+    
+    pthread_create(&thread_id, NULL, helloWorldThread, NULL);
+    
+    pthread_join(thread_id, NULL);
 
-   for(i=0;i<NUM_THREADS;i++)
-       pthread_join(threads[i], NULL);
+    closelog();
 
-   printf("TEST COMPLETE\n");
+    return 0;
 }
+
